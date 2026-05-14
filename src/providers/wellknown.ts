@@ -143,6 +143,19 @@ export class WellKnownProvider implements HostProvider {
     resolvedWellKnownPath: string;
     indexUrl: string;
   } | null> {
+    const candidates = await this.fetchIndexCandidates(baseUrl);
+    return candidates[0] ?? null;
+  }
+
+  private async fetchIndexCandidates(baseUrl: string): Promise<
+    Array<{
+      index: WellKnownIndex;
+      entries: NormalizedWellKnownEntry[];
+      resolvedBaseUrl: string;
+      resolvedWellKnownPath: string;
+      indexUrl: string;
+    }>
+  > {
     try {
       const parsed = new URL(baseUrl);
       const basePath = parsed.pathname.replace(/\/$/, '');
@@ -169,6 +182,14 @@ export class WellKnownProvider implements HostProvider {
         }
       }
 
+      const candidates: Array<{
+        index: WellKnownIndex;
+        entries: NormalizedWellKnownEntry[];
+        resolvedBaseUrl: string;
+        resolvedWellKnownPath: string;
+        indexUrl: string;
+      }> = [];
+
       for (const { indexUrl, baseUrl: resolvedBase, wellKnownPath } of urlsToTry) {
         try {
           const response = await fetch(indexUrl);
@@ -178,21 +199,21 @@ export class WellKnownProvider implements HostProvider {
           const normalized = this.normalizeIndex(rawIndex, indexUrl, wellKnownPath);
           if (!normalized) continue;
 
-          return {
+          candidates.push({
             index: normalized.index,
             entries: normalized.entries,
             resolvedBaseUrl: resolvedBase,
             resolvedWellKnownPath: wellKnownPath,
             indexUrl,
-          };
+          });
         } catch {
           continue;
         }
       }
 
-      return null;
+      return candidates;
     } catch {
-      return null;
+      return [];
     }
   }
 
@@ -327,27 +348,31 @@ export class WellKnownProvider implements HostProvider {
   async fetchSkill(url: string): Promise<RemoteSkill | null> {
     try {
       const parsed = new URL(url);
-      const result = await this.fetchIndex(url);
-      if (!result) return null;
+      const candidates = await this.fetchIndexCandidates(url);
 
-      const { entries } = result;
-      let skillName: string | null = null;
+      for (const result of candidates) {
+        const { entries } = result;
+        let skillName: string | null = null;
 
-      const pathMatch = parsed.pathname.match(
-        /\/.well-known\/(?:agent-skills|skills)\/([^/]+)\/?$/
-      );
-      if (pathMatch && pathMatch[1] && pathMatch[1] !== 'index.json') {
-        skillName = pathMatch[1];
-      } else if (entries.length === 1) {
-        skillName = entries[0]!.name;
+        const pathMatch = parsed.pathname.match(
+          /\/.well-known\/(?:agent-skills|skills)\/([^/]+)\/?$/
+        );
+        if (pathMatch && pathMatch[1] && pathMatch[1] !== 'index.json') {
+          skillName = pathMatch[1];
+        } else if (entries.length === 1) {
+          skillName = entries[0]!.name;
+        }
+
+        if (!skillName) continue;
+
+        const skillEntry = entries.find((s) => s.name === skillName);
+        if (!skillEntry) continue;
+
+        const skill = await this.fetchSkillByEntry(skillEntry);
+        if (skill) return skill;
       }
 
-      if (!skillName) return null;
-
-      const skillEntry = entries.find((s) => s.name === skillName);
-      if (!skillEntry) return null;
-
-      return this.fetchSkillByEntry(skillEntry);
+      return null;
     } catch {
       return null;
     }
@@ -518,12 +543,18 @@ export class WellKnownProvider implements HostProvider {
   /** Fetch all skills from a well-known endpoint. */
   async fetchAllSkills(url: string): Promise<WellKnownSkill[]> {
     try {
-      const result = await this.fetchIndex(url);
-      if (!result) return [];
+      const candidates = await this.fetchIndexCandidates(url);
 
-      const skillPromises = result.entries.map((entry) => this.fetchSkillByEntry(entry));
-      const results = await Promise.all(skillPromises);
-      return results.filter((s: WellKnownSkill | null): s is WellKnownSkill => s !== null);
+      for (const result of candidates) {
+        const skillPromises = result.entries.map((entry) => this.fetchSkillByEntry(entry));
+        const results = await Promise.all(skillPromises);
+        const skills = results.filter(
+          (s: WellKnownSkill | null): s is WellKnownSkill => s !== null
+        );
+        if (skills.length > 0) return skills;
+      }
+
+      return [];
     } catch {
       return [];
     }
