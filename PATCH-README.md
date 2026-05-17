@@ -48,12 +48,53 @@ skills add <source> -g -a claude-code --skill '*' -y
 
 ## Install (local fork)
 
+First clone and build:
+
 ```bash
 git clone https://github.com/EmonCodingAILLM/skills.git ~/SkillsProjects/skills
 cd ~/SkillsProjects/skills
 pnpm install && pnpm build
-npm uninstall -g skills   # remove official version
-npm link                  # register fork as global `skills` command
+```
+
+Then choose one of two methods:
+
+### Method 1: `npm link` (recommended — replaces the `skills` command)
+
+Uninstall the official npm package, then link your fork. After linking, the global
+`skills` command points to your fork. Rebuild after code changes to pick them up.
+
+```bash
+npm uninstall -g skills
+cd ~/SkillsProjects/skills
+npm link
+```
+
+How it works:
+
+```
+skills 命令
+  → /usr/local/bin/skills → ~/.nvm/.../bin/skills       (npm 管理的全局 bin)
+    → ~/.nvm/.../lib/node_modules/skills                 (npm link 创建的软链接)
+      → ~/SkillsProjects/skills                          (真实源码)
+```
+
+You can still use the official version on‑demand with `npx skills@latest`.
+
+### Method 2: shell alias (keep the official `skills` untouched)
+
+Add an alias to `~/.zshrc` so both commands coexist. Rebuild after code changes,
+no need to re‑alias.
+
+```bash
+# ~/.zshrc
+alias myskills="node ~/SkillsProjects/skills/dist/cli.mjs"
+```
+
+Then `source ~/.zshrc` or restart your shell.
+
+```bash
+skills    → npm 原版 (不动)
+myskills  → 你的 fork (带 --path 功能)
 ```
 
 ## Sync upstream
