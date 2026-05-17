@@ -56,6 +56,21 @@ export function sanitizeName(name: string): string {
 }
 
 /**
+ * Sanitizes a user-provided path prefix for skill installation.
+ * Splits on '/' and sanitizes each segment individually, then rejoins
+ * with '/' to preserve directory hierarchy while preventing traversal.
+ * @param path - The path prefix to sanitize (e.g. "superpowers/git")
+ * @returns Sanitized path safe for use in directory construction
+ */
+export function sanitizePath(path: string): string {
+  return path
+    .split('/')
+    .map((segment) => sanitizeName(segment))
+    .filter(Boolean)
+    .join('/');
+}
+
+/**
  * Validates that a path is within an expected base directory
  * @param basePath - The expected base directory
  * @param targetPath - The path to validate
@@ -227,7 +242,7 @@ async function createSymlink(target: string, linkPath: string): Promise<boolean>
 export async function installSkillForAgent(
   skill: Skill,
   agentType: AgentType,
-  options: { global?: boolean; cwd?: string; mode?: InstallMode } = {}
+  options: { global?: boolean; cwd?: string; mode?: InstallMode; path?: string } = {}
 ): Promise<InstallResult> {
   const agent = agents[agentType];
   const isGlobal = options.global ?? false;
@@ -247,13 +262,18 @@ export async function installSkillForAgent(
   const rawSkillName = skill.name || basename(skill.path);
   const skillName = sanitizeName(rawSkillName);
 
-  // Canonical location: .agents/skills/<skill-name>
+  // Optional path prefix for nested install (e.g. "superpowers")
+  const pathPrefix = options.path ? sanitizePath(options.path) : '';
+
+  // Canonical location: .agents/skills/[pathPrefix/]<skill-name>
   const canonicalBase = getCanonicalSkillsDir(isGlobal, cwd);
-  const canonicalDir = join(canonicalBase, skillName);
+  const canonicalDir = pathPrefix
+    ? join(canonicalBase, pathPrefix, skillName)
+    : join(canonicalBase, skillName);
 
   // Agent-specific location (for symlink)
   const agentBase = getAgentBaseDir(agentType, isGlobal, cwd);
-  const agentDir = join(agentBase, skillName);
+  const agentDir = pathPrefix ? join(agentBase, pathPrefix, skillName) : join(agentBase, skillName);
 
   const installMode = options.mode ?? 'symlink';
 
@@ -462,11 +482,14 @@ export function getInstallPath(
  */
 export function getCanonicalPath(
   skillName: string,
-  options: { global?: boolean; cwd?: string } = {}
+  options: { global?: boolean; cwd?: string; path?: string } = {}
 ): string {
   const sanitized = sanitizeName(skillName);
   const canonicalBase = getCanonicalSkillsDir(options.global ?? false, options.cwd);
-  const canonicalPath = join(canonicalBase, sanitized);
+  const pathPrefix = options.path ? sanitizePath(options.path) : '';
+  const canonicalPath = pathPrefix
+    ? join(canonicalBase, pathPrefix, sanitized)
+    : join(canonicalBase, sanitized);
 
   if (!isPathSafe(canonicalBase, canonicalPath)) {
     throw new Error('Invalid skill name: potential path traversal detected');
@@ -603,7 +626,7 @@ export async function installRemoteSkillForAgent(
 export async function installWellKnownSkillForAgent(
   skill: WellKnownSkill,
   agentType: AgentType,
-  options: { global?: boolean; cwd?: string; mode?: InstallMode } = {}
+  options: { global?: boolean; cwd?: string; mode?: InstallMode; path?: string } = {}
 ): Promise<InstallResult> {
   const agent = agents[agentType];
   const isGlobal = options.global ?? false;
@@ -623,13 +646,18 @@ export async function installWellKnownSkillForAgent(
   // Use installName as the skill directory name
   const skillName = sanitizeName(skill.installName);
 
-  // Canonical location: .agents/skills/<skill-name>
+  // Optional path prefix for nested install (e.g. "superpowers")
+  const pathPrefix = options.path ? sanitizePath(options.path) : '';
+
+  // Canonical location: .agents/skills/[pathPrefix/]<skill-name>
   const canonicalBase = getCanonicalSkillsDir(isGlobal, cwd);
-  const canonicalDir = join(canonicalBase, skillName);
+  const canonicalDir = pathPrefix
+    ? join(canonicalBase, pathPrefix, skillName)
+    : join(canonicalBase, skillName);
 
   // Agent-specific location (for symlink)
   const agentBase = getAgentBaseDir(agentType, isGlobal, cwd);
-  const agentDir = join(agentBase, skillName);
+  const agentDir = pathPrefix ? join(agentBase, pathPrefix, skillName) : join(agentBase, skillName);
 
   // Validate paths
   if (!isPathSafe(canonicalBase, canonicalDir)) {
@@ -738,7 +766,7 @@ export async function installWellKnownSkillForAgent(
 export async function installBlobSkillForAgent(
   skill: { installName: string; files: Array<{ path: string; contents: string }> },
   agentType: AgentType,
-  options: { global?: boolean; cwd?: string; mode?: InstallMode } = {}
+  options: { global?: boolean; cwd?: string; mode?: InstallMode; path?: string } = {}
 ): Promise<InstallResult> {
   const agent = agents[agentType];
   const isGlobal = options.global ?? false;
@@ -755,10 +783,16 @@ export async function installBlobSkillForAgent(
   }
 
   const skillName = sanitizeName(skill.installName);
+
+  // Optional path prefix for nested install (e.g. "superpowers")
+  const pathPrefix = options.path ? sanitizePath(options.path) : '';
+
   const canonicalBase = getCanonicalSkillsDir(isGlobal, cwd);
-  const canonicalDir = join(canonicalBase, skillName);
+  const canonicalDir = pathPrefix
+    ? join(canonicalBase, pathPrefix, skillName)
+    : join(canonicalBase, skillName);
   const agentBase = getAgentBaseDir(agentType, isGlobal, cwd);
-  const agentDir = join(agentBase, skillName);
+  const agentDir = pathPrefix ? join(agentBase, pathPrefix, skillName) : join(agentBase, skillName);
 
   if (!isPathSafe(canonicalBase, canonicalDir)) {
     return {

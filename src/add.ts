@@ -428,6 +428,7 @@ export interface AddOptions {
   all?: boolean;
   fullDepth?: boolean;
   copy?: boolean;
+  path?: string;
   dangerouslyAcceptOpenclawRisks?: boolean;
 }
 
@@ -696,7 +697,10 @@ async function handleWellKnownSkills(
   for (const skill of selectedSkills) {
     if (summaryLines.length > 0) summaryLines.push('');
 
-    const canonicalPath = getCanonicalPath(skill.installName, { global: installGlobally });
+    const canonicalPath = getCanonicalPath(skill.installName, {
+      global: installGlobally,
+      path: options.path,
+    });
     const shortCanonical = shortenPath(canonicalPath, cwd);
     summaryLines.push(`${pc.cyan(shortCanonical)}`);
     summaryLines.push(...buildAgentSummaryLines(targetAgents, installMode));
@@ -748,6 +752,7 @@ async function handleWellKnownSkills(
       const result = await installWellKnownSkillForAgent(skill, agent, {
         global: installGlobally,
         mode: installMode,
+        path: options.path,
       });
       results.push({
         skill: skill.installName,
@@ -1524,13 +1529,14 @@ export async function runAdd(args: string[], options: AddOptions = {}): Promise<
           result = await installBlobSkillForAgent(
             { installName: blobSkill.name, files: blobSkill.files },
             agent,
-            { global: installGlobally, mode: installMode }
+            { global: installGlobally, mode: installMode, path: options.path }
           );
         } else {
           // Disk-based install: copy from cloned/local directory
           result = await installSkillForAgent(skill, agent, {
             global: installGlobally,
             mode: installMode,
+            path: options.path,
           });
         }
         results.push({
@@ -1936,6 +1942,9 @@ export function parseAddOptions(args: string[]): { source: string[]; options: Ad
         nextArg = args[i];
       }
       i--; // Back up one since the loop will increment
+    } else if (arg === '-p' || arg === '--path') {
+      i++;
+      options.path = args[i];
     } else if (arg === '--full-depth') {
       options.fullDepth = true;
     } else if (arg === '--copy') {
